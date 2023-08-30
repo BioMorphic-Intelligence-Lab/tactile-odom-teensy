@@ -13,9 +13,9 @@
 #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
 
 // Define Constants
-constexpr uint8_t N = 2;
-constexpr double LINEAR_TICKS_2_M  = 0.06/1024;
-constexpr unsigned int TIMER_TIMEOUT = RCL_S_TO_NS(1.0 / 150.0);
+constexpr uint8_t N = 2; // Number of joints
+constexpr double LINEAR_TICKS_2_M  = 0.06/1024; // Conversion factor from ticks to lin dist
+constexpr unsigned int TIMER_TIMEOUT = RCL_S_TO_NS(1.0 / 150.0); // 1/f_pub
 
 
 // Define 
