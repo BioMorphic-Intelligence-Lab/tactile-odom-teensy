@@ -8,14 +8,18 @@
 #include <rclc/executor.h>
 #include <sensor_msgs/msg/joint_state.h>
 
+#include "servo.h"
+
+
 // Wrap functions in this to check if ROS is still running throughout
 #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
 #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
 
 // Define Constants
 constexpr uint8_t N = 2; // Number of joints
-constexpr double LINEAR_TICKS_2_M  = 0.06/1024; // Conversion factor from ticks to lin dist
-constexpr unsigned int TIMER_TIMEOUT = RCL_S_TO_NS(1.0 / 150.0); // 1/f_pub
+constexpr double LINEAR_TICKS_2_M  = 0.06/1024.0; // Conversion factor from ticks to lin dist
+constexpr double ROT_TICKS_2_RAD  = 2 * M_PI/4096.0; // Conversion factor from ticks to rad
+constexpr unsigned int TIMER_TIMEOUT = RCL_S_TO_NS(1.0 / 10.0); // 1/f_pub
 
 
 // Define 
@@ -49,7 +53,7 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
     
     // Write the current joint positions
     state.position.data[0] = LINEAR_TICKS_2_M * analogRead(A9);
-    state.position.data[1] = 0.0;
+    state.position.data[1] = ROT_TICKS_2_RAD * ReadCurrentPosition(1);
 
     // Publish
     RCSOFTCHECK(rcl_publish(&publisher, &state, NULL));
@@ -57,13 +61,15 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 }
 
 void setup() {
+
+  InitServos();
+  
   // Init MicroRos
   set_microros_transports();
   
   // Init user com LED
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);  
-  
   delay(500);
 
   allocator = rcl_get_default_allocator();
