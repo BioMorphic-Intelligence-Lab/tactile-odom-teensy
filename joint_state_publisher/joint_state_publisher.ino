@@ -19,7 +19,7 @@
 constexpr uint8_t N = 2; // Number of joints
 constexpr double LINEAR_TICKS_2_M  = 0.06/1024.0; // Conversion factor from ticks to lin dist
 constexpr double ROT_TICKS_2_RAD  = 2 * M_PI/4096.0; // Conversion factor from ticks to rad
-constexpr unsigned int TIMER_TIMEOUT = RCL_S_TO_NS(1.0 / 10.0); // 1/f_pub
+constexpr unsigned int TIMER_TIMEOUT = RCL_S_TO_NS(1.0 / 100.0); // 1/f_pub
 
 
 // Define 
@@ -31,6 +31,8 @@ rcl_allocator_t allocator;
 rcl_node_t node;
 rcl_timer_t timer;
 
+double last_lin_pos;
+uint64_t last_ts;
 
 // Loop that runs if an error occurs. Blink the LED to let the user know
 void error_loop(){
@@ -53,8 +55,15 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
     
     // Write the current joint positions
     state.position.data[0] = LINEAR_TICKS_2_M * analogRead(A9);
-    state.position.data[1] = ROT_TICKS_2_RAD * ReadCurrentPosition(1);
+    state.position.data[1] = ROT_TICKS_2_RAD * read_current_pos(1);
 
+    // Write the current joint velocities
+    state.velocity.data[0] = (state.position.data[0]-last_lin_pos) / (now - last_ts) * 1e9;
+    state.velocity.data[1] = ROT_TICKS_2_RAD * read_current_vel(1);
+
+    last_ts = now;
+    last_lin_pos = state.position.data[0];
+    
     // Publish
     RCSOFTCHECK(rcl_publish(&publisher, &state, NULL));
   }
@@ -102,6 +111,10 @@ void setup() {
   state.position.size = N;
   state.position.capacity = N;
   state.position.data = (double *) malloc(N * sizeof(double));
+  
+  state.velocity.size = N;
+  state.velocity.capacity = N;
+  state.velocity.data = (double *) malloc(N * sizeof(double));
 
   state.name.size = N;
   state.name.capacity = N;
@@ -116,6 +129,10 @@ void setup() {
   state.name.data[1].data = (char *) malloc(10 * sizeof(char));
   sprintf(state.name.data[1].data, "revolute");
   state.name.data[1].size = strlen(state.name.data[1].data);
+
+  // Init last pos and ts
+  last_lin_pos = LINEAR_TICKS_2_M * analogRead(A9);
+  last_ts = rmw_uros_epoch_nanos();
 }
 
 void loop() {
