@@ -33,6 +33,7 @@ rcl_timer_t timer;
 
 double last_lin_pos;
 uint64_t last_ts;
+uint16_t offset_lin, offset_rot;
 
 // Loop that runs if an error occurs. Blink the LED to let the user know
 void error_loop(){
@@ -54,8 +55,8 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
     state.header.stamp.nanosec = now - RCL_S_TO_NS(state.header.stamp.sec);
     
     // Write the current joint positions
-    state.position.data[0] = LINEAR_TICKS_2_M * analogRead(A9);
-    state.position.data[1] = ROT_TICKS_2_RAD * read_current_pos(1);
+    state.position.data[0] = LINEAR_TICKS_2_M * (analogRead(A9) - offset_lin);
+    state.position.data[1] = ROT_TICKS_2_RAD * (read_current_pos(1) - offset_rot);
 
     // Write the current joint velocities
     state.velocity.data[0] = (state.position.data[0]-last_lin_pos) / (now - last_ts) * 1e9;
@@ -133,6 +134,10 @@ void setup() {
   // Init last pos and ts
   last_lin_pos = LINEAR_TICKS_2_M * analogRead(A9);
   last_ts = rmw_uros_epoch_nanos();
+
+  // Init offsets
+  offset_lin = analogRead(A9);
+  offset_rot = read_current_pos(1);
 }
 
 void loop() {
