@@ -85,29 +85,59 @@ void setup() {
   allocator = rcl_get_default_allocator();
 
   //create init_options
-  RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+  while(rclc_support_init(&support, 0, NULL, &allocator) != RCL_RET_OK)
+  {
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    delay(100);
+  }
 
   // create node
-  RCCHECK(rclc_node_init_default(&node, "micro_ros_arduino_node", "", &support));
+  while(rclc_node_init_default(&node, "micro_ros_arduino_node", "", &support) != RCL_RET_OK)
+  {
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    delay(100);
+  }
+
 
   // create publisher
-  RCCHECK(rclc_publisher_init_default(
+  while(rclc_publisher_init_default(
     &publisher,
     &node,
     ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, JointState),
-    "joint_state"));
+    "joint_state") != RCL_RET_OK)
+  {
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    delay(100);
+  }
+
 
   // create timer,
-  RCCHECK(rclc_timer_init_default(
+  while(rclc_timer_init_default(
     &timer,
     &support,
     TIMER_TIMEOUT,
-    timer_callback));
+    timer_callback) != RCL_RET_OK)
+  {
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    delay(100);
+  }
+
 
   // create executor
-  RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
-  RCCHECK(rclc_executor_add_timer(&executor, &timer));
+  while(rclc_executor_init(&executor, &support.context, 1, &allocator) != RCL_RET_OK)
+  {
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    delay(100);
+  }
 
+  while(rclc_executor_add_timer(&executor, &timer) != RCL_RET_OK)
+  {
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    delay(100);
+  }
+
+  digitalWrite(LED_BUILTIN, HIGH);
+  
   // Init joint message
   state.position.size = N;
   state.position.capacity = N;
