@@ -13,7 +13,12 @@
 
 // Wrap functions in this to check if ROS is still running throughout
 #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
-#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
+#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));}}
+#define EXECUTE_EVERY_N_MS(MS, X)  do { \
+  static volatile int64_t init = -1; \
+  if (init == -1) { init = uxr_millis();} \
+  if (uxr_millis() - init > MS) { X; init = uxr_millis();} \
+} while (0)\
 
 // Define Constants
 constexpr uint8_t N = 2; // Number of joints
@@ -24,7 +29,7 @@ constexpr unsigned int TIMER_TIMEOUT = RCL_S_TO_NS(1.0 / 100.0); // 1/f_pub
 
 // Define 
 rcl_publisher_t publisher;
-sensor_msgs__msg__JointState state;
+sensor_msgs__msg__JointState state_msg;
 rclc_executor_t executor;
 rclc_support_t support;
 rcl_allocator_t allocator;
@@ -35,53 +40,15 @@ double last_lin_pos;
 uint64_t last_ts;
 uint16_t offset_lin, offset_rot;
 
-// Loop that runs if an error occurs. Blink the LED to let the user know
-void error_loop(){
-  while(1){
-    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-    delay(100);
-  }
-}
+enum states {
+  WAITING_AGENT,
+  AGENT_AVAILABLE,
+  AGENT_CONNECTED,
+  AGENT_DISCONNECTED
+} state;
 
-// Callback function for the timer, publish states
-void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
-{  
-  RCLC_UNUSED(last_call_time);
-
-  if (timer != NULL) {
-    // Get current timestamp
-    int64_t now = rmw_uros_epoch_nanos();
-    state.header.stamp.sec = RCL_NS_TO_S(now);
-    state.header.stamp.nanosec = now - RCL_S_TO_NS(state.header.stamp.sec);
-    
-    // Write the current joint positions
-    state.position.data[0] = -LINEAR_TICKS_2_M * (analogRead(A9) - offset_lin);
-    state.position.data[1] = ROT_TICKS_2_RAD * (read_current_pos(1) - offset_rot);
-
-    // Write the current joint velocities
-    state.velocity.data[0] = (state.position.data[0]-last_lin_pos) / (now - last_ts) * 1e9;
-    state.velocity.data[1] = ROT_TICKS_2_RAD * read_current_vel(1);
-
-    last_ts = now;
-    last_lin_pos = state.position.data[0];
-    
-    // Publish
-    RCSOFTCHECK(rcl_publish(&publisher, &state, NULL));
-  }
-}
-
-void setup() {
-
-  InitServos();
-  
-  // Init MicroRos
-  set_microros_transports();
-  
-  // Init user com LED
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);  
-  delay(500);
-
+bool create_entities()
+{
   allocator = rcl_get_default_allocator();
 
   //create init_options
@@ -136,30 +103,92 @@ void setup() {
     delay(100);
   }
 
-  digitalWrite(LED_BUILTIN, HIGH);
+  return true;
+}
+
+void destroy_entities()
+{
+  rmw_context_t * rmw_context = rcl_context_get_rmw_context(&support.context);
+  (void) rmw_uros_set_context_entity_destroy_session_timeout(rmw_context, 0);
+
+  (void)! rcl_publisher_fini(&publisher, &node);
+  (void)! rcl_timer_fini(&timer);
+  rclc_executor_fini(&executor);
+  (void)! rcl_node_fini(&node);
+  rclc_support_fini(&support);
+}
+
+// Loop that runs if an error occurs. Blink the LED to let the user know
+void error_loop(){
+  while(1){
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    delay(100);
+  }
+}
+
+// Callback function for the timer, publish states
+void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
+{  
+  RCLC_UNUSED(last_call_time);
+
+  if (timer != NULL) {
+    // Get current timestamp
+    int64_t now = rmw_uros_epoch_nanos();
+    state_msg.header.stamp.sec = RCL_NS_TO_S(now);
+    state_msg.header.stamp.nanosec = now - RCL_S_TO_NS(state_msg.header.stamp.sec);
+    
+    // Write the current joint positions
+    state_msg.position.data[0] = -LINEAR_TICKS_2_M * (analogRead(A9) - offset_lin);
+    state_msg.position.data[1] = ROT_TICKS_2_RAD * (read_current_pos(1) - offset_rot);
+
+    // Write the current joint velocities
+    state_msg.velocity.data[0] = (state_msg.position.data[0]-last_lin_pos) / (now - last_ts) * 1e9;
+    state_msg.velocity.data[1] = ROT_TICKS_2_RAD * read_current_vel(1);
+
+    last_ts = now;
+    last_lin_pos = state_msg.position.data[0];
+    
+    // Publish
+    RCSOFTCHECK(rcl_publish(&publisher, &state_msg, NULL));
+  }
+}
+
+void setup() {
+
+  InitServos();
   
+  // Init MicroRos
+  set_microros_transports();
+  
+  // Init user com LED
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);  
+  delay(500);
+
+  state = WAITING_AGENT;
+
   // Init joint message
-  state.position.size = N;
-  state.position.capacity = N;
-  state.position.data = (double *) malloc(N * sizeof(double));
+  state_msg.position.size = N;
+  state_msg.position.capacity = N;
+  state_msg.position.data = (double *) malloc(N * sizeof(double));
   
-  state.velocity.size = N;
-  state.velocity.capacity = N;
-  state.velocity.data = (double *) malloc(N * sizeof(double));
+  state_msg.velocity.size = N;
+  state_msg.velocity.capacity = N;
+  state_msg.velocity.data = (double *) malloc(N * sizeof(double));
 
-  state.name.size = N;
-  state.name.capacity = N;
-  state.name.data = (rosidl_runtime_c__String*) malloc(N*sizeof(rosidl_runtime_c__String)); 
+  state_msg.name.size = N;
+  state_msg.name.capacity = N;
+  state_msg.name.data = (rosidl_runtime_c__String*) malloc(N*sizeof(rosidl_runtime_c__String)); 
 
-  state.name.data[0].capacity = 10;
-  state.name.data[0].data = (char *) malloc(10 * sizeof(char));
-  sprintf(state.name.data[0].data, "linear");
-  state.name.data[0].size = strlen(state.name.data[0].data);
+  state_msg.name.data[0].capacity = 10;
+  state_msg.name.data[0].data = (char *) malloc(10 * sizeof(char));
+  sprintf(state_msg.name.data[0].data, "linear");
+  state_msg.name.data[0].size = strlen(state_msg.name.data[0].data);
    
-  state.name.data[1].capacity = 10;
-  state.name.data[1].data = (char *) malloc(10 * sizeof(char));
-  sprintf(state.name.data[1].data, "revolute");
-  state.name.data[1].size = strlen(state.name.data[1].data);
+  state_msg.name.data[1].capacity = 10;
+  state_msg.name.data[1].data = (char *) malloc(10 * sizeof(char));
+  sprintf(state_msg.name.data[1].data, "revolute");
+  state_msg.name.data[1].size = strlen(state_msg.name.data[1].data);
 
   // Init last pos and ts
   last_lin_pos = LINEAR_TICKS_2_M * analogRead(A9);
@@ -171,6 +200,33 @@ void setup() {
 }
 
 void loop() {
-  // On each we execute once
-  RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
+  switch (state) {
+    case WAITING_AGENT:
+      EXECUTE_EVERY_N_MS(500, state = (RMW_RET_OK == rmw_uros_ping_agent(100, 1)) ? AGENT_AVAILABLE : WAITING_AGENT;);
+      break;
+    case AGENT_AVAILABLE:
+      state = (true == create_entities()) ? AGENT_CONNECTED : WAITING_AGENT;
+      if (state == WAITING_AGENT) {
+        destroy_entities();
+      };
+      break;
+    case AGENT_CONNECTED:
+      EXECUTE_EVERY_N_MS(200, state = (RMW_RET_OK == rmw_uros_ping_agent(100, 1)) ? AGENT_CONNECTED : AGENT_DISCONNECTED;);
+      if (state == AGENT_CONNECTED) {
+        rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+      }
+      break;
+    case AGENT_DISCONNECTED:
+      destroy_entities();
+      state = WAITING_AGENT;
+      break;
+    default:
+      break;
+  }
+
+  if (state == AGENT_CONNECTED) {
+    digitalWrite(LED_BUILTIN, 1);
+  } else {
+    digitalWrite(LED_BUILTIN, 0);
+  }
 }
