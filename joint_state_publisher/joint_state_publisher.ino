@@ -24,7 +24,7 @@
 constexpr uint8_t N = 2; // Number of joints
 constexpr double LINEAR_TICKS_2_M  = 0.06/1024.0; // Conversion factor from ticks to lin dist
 constexpr double ROT_TICKS_2_RAD  = 2 * M_PI/4096.0; // Conversion factor from ticks to rad
-constexpr unsigned int TIMER_TIMEOUT = RCL_S_TO_NS(1.0 / 100.0); // 1/f_pub
+constexpr unsigned int TIMER_TIMEOUT = RCL_S_TO_NS(1.0 / 25.0); // 1/f_pub
 
 
 // Define 
