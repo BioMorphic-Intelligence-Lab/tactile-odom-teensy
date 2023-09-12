@@ -55,7 +55,7 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
     state.header.stamp.nanosec = now - RCL_S_TO_NS(state.header.stamp.sec);
     
     // Write the current joint positions
-    state.position.data[0] = LINEAR_TICKS_2_M * (analogRead(A9) - offset_lin);
+    state.position.data[0] = -LINEAR_TICKS_2_M * (analogRead(A9) - offset_lin);
     state.position.data[1] = ROT_TICKS_2_RAD * (read_current_pos(1) - offset_rot);
 
     // Write the current joint velocities
