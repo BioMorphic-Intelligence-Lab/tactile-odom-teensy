@@ -36,7 +36,7 @@ rcl_allocator_t allocator;
 rcl_node_t node;
 rcl_timer_t timer;
 
-double last_lin_pos;
+double last_lin_pos, last_rot_pos;
 uint64_t last_ts;
 uint16_t offset_lin, offset_rot;
 
@@ -106,6 +106,14 @@ bool create_entities()
   return true;
 }
 
+double normalize_angle(double theta)
+{
+    theta = fmod(theta + M_PI, 2 * M_PI);
+    if (theta < 0)
+        theta += 2 * M_PI;
+    return theta - M_PI;
+}
+
 void destroy_entities()
 {
   rmw_context_t * rmw_context = rcl_context_get_rmw_context(&support.context);
@@ -139,14 +147,15 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
     
     // Write the current joint positions
     state_msg.position.data[0] = -LINEAR_TICKS_2_M * (analogRead(A9) - offset_lin);
-    state_msg.position.data[1] = ROT_TICKS_2_RAD * (read_current_pos(1) - offset_rot);
+    state_msg.position.data[1] = normalize_angle(ROT_TICKS_2_RAD * (read_current_pos(1) - offset_rot));
 
     // Write the current joint velocities
     state_msg.velocity.data[0] = (state_msg.position.data[0]-last_lin_pos) / (now - last_ts) * 1e9;
-    state_msg.velocity.data[1] = ROT_TICKS_2_RAD * read_current_vel(1);
+    state_msg.velocity.data[1] = (state_msg.position.data[1]-last_rot_pos) / (now - last_ts) * 1e9;
 
     last_ts = now;
     last_lin_pos = state_msg.position.data[0];
+    last_rot_pos = state_msg.position.data[1];
     
     // Publish
     RCSOFTCHECK(rcl_publish(&publisher, &state_msg, NULL));
@@ -192,11 +201,12 @@ void setup() {
 
   // Init last pos and ts
   last_lin_pos = LINEAR_TICKS_2_M * analogRead(A9);
+  last_rot_pos = normalize_angle(ROT_TICKS_2_RAD * (read_current_pos(1) - offset_rot));
   last_ts = rmw_uros_epoch_nanos();
 
   // Init offsets
   offset_lin = analogRead(A9);
-  offset_rot = read_current_pos(1);
+  offset_rot = 3930;
 }
 
 void loop() {
