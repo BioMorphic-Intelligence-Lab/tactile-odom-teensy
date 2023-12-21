@@ -23,7 +23,8 @@
 // Define Constants
 constexpr uint8_t N = 2; // Number of joints
 constexpr double LINEAR_TICKS_2_M  = 0.06/1024.0; // Conversion factor from ticks to lin dist
-constexpr double ROT_TICKS_2_RAD  = 2 * M_PI/4096.0; // Conversion factor from ticks to rad
+constexpr double ROT_RES = 4096.0;
+constexpr double ROT_TICKS_2_RAD  = 2.0 * M_PI/ROT_RES; // Conversion factor from ticks to rad
 constexpr unsigned int TIMER_TIMEOUT = RCL_S_TO_NS(1.0 / 25.0); // 1/f_pub
 
 
@@ -199,14 +200,14 @@ void setup() {
   sprintf(state_msg.name.data[1].data, "revolute");
   state_msg.name.data[1].size = strlen(state_msg.name.data[1].data);
 
+  // Init offsets
+  offset_lin = analogRead(A9);
+  offset_rot = read_current_pos(1);
+
   // Init last pos and ts
   last_lin_pos = LINEAR_TICKS_2_M * analogRead(A9);
   last_rot_pos = normalize_angle(ROT_TICKS_2_RAD * (read_current_pos(1) - offset_rot));
   last_ts = rmw_uros_epoch_nanos();
-
-  // Init offsets
-  offset_lin = analogRead(A9);
-  offset_rot = 3930;
 }
 
 void loop() {
